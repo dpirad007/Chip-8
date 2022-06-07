@@ -37,7 +37,7 @@ pub struct Emu {
     stack: [u16; STACK_SIZE],
     keys: [bool; NUM_KEYS],
     dt: u8,
-    s1: u8,
+    st: u8,
 }
 
 impl Emu {
@@ -52,7 +52,7 @@ impl Emu {
             stack: [0; STACK_SIZE],
             keys: [false; NUM_KEYS],
             dt: 0,
-            s1: 0,
+            st: 0,
         };
 
         new_emulator.ram[..FONTSET_SIZE].copy_from_slice(&FONTSET);
@@ -70,7 +70,7 @@ impl Emu {
         self.stack = [0; STACK_SIZE];
         self.keys = [false; NUM_KEYS];
         self.dt = 0;
-        self.s1 = 0;
+        self.st = 0;
         self.ram[..FONTSET_SIZE].copy_from_slice(&FONTSET);
     }
 
@@ -83,4 +83,40 @@ impl Emu {
         self.sp -= 1;
         self.stack[self.sp as usize]
     }
+
+    pub fn tick(&mut self) {
+        let op = self.fetch();
+        self.execute(op);
+    }
+
+    pub fn tick_timers(&mut self) {
+        if self.dt > 0 {
+            self.dt -= 1
+        }
+
+        if self.st > 0 {
+            if self.st == 1 {
+
+                //Audio not implemented
+            }
+
+            self.st -= 1
+        }
+    }
+
+    fn fetch(&mut self) -> u16 {
+        let higher_byte = self.ram[self.pc as usize] as u16;
+        let lower_byte = self.ram[(self.pc + 1) as usize] as u16;
+
+        // Left shift higher byte by 8 so,
+        // high = 0001000 -> 0001000 00000000
+        // then bitwise or with lower
+        // high or low -> 0001000 00000000
+        //                        10010000
+        let op = (higher_byte << 8) | lower_byte;
+        self.pc += 2;
+        op
+    }
+
+    fn execute(&mut self, op: u16) {}
 }
