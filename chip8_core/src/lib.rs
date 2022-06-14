@@ -1,3 +1,5 @@
+use rand::random;
+
 pub const SCREEN_WIDTH: usize = 64;
 pub const SCREEN_HEIGHT: usize = 32;
 
@@ -195,14 +197,14 @@ impl Emu {
 
             // 6XNN - VX = NN
             (6, _, _, _) => {
-                let x = digit1 as usize;
+                let x = digit2 as usize;
                 let nn = (op & 0xFF) as u8;
                 self.v_reg[x] = nn;
             }
 
             // 7XNN - VX += NN
             (7, _, _, _) => {
-                let x = digit1 as usize;
+                let x = digit2 as usize;
                 let nn = (op & 0xFF) as u8;
                 // could just use += right? weird
                 self.v_reg[x] = self.v_reg[x].wrapping_add(nn);
@@ -210,11 +212,138 @@ impl Emu {
 
             // 8XY0 - VX = VY
             (8, _, _, 0) => {
-                let x = digit1 as usize;
-                let y = digit2 as usize;
+                let x = digit2 as usize;
+                let y = digit3 as usize;
                 self.v_reg[x] = self.v_reg[y]
             }
 
+            // 8XY1 VX |= VY
+            (8, _, _, 1) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] |= self.v_reg[y]
+            }
+
+            // 8XY2 VX &= VY
+            (8, _, _, 2) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] &= self.v_reg[y]
+            }
+
+            // 8XY3 VX |= VY
+            (8, _, _, 3) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+                self.v_reg[x] ^= self.v_reg[y]
+            }
+
+            // 8XY4 - VX += VY
+            (8, _, _, 4) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+
+                let (new_vx, carry) = self.v_reg[x].overflowing_add(self.v_reg[y]);
+
+                let vf = if carry { 1 } else { 0 };
+
+                self.v_reg[x] = new_vx;
+                self.v_reg[0xF] = vf;
+            }
+
+            // 8XY5 - VX -= VY
+            (8, _, _, 5) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+
+                let (new_vx, borrow) = self.v_reg[x].overflowing_sub(self.v_reg[y]);
+
+                let vf = if borrow { 0 } else { 1 };
+
+                self.v_reg[x] = new_vx;
+                self.v_reg[0xF] = vf;
+            }
+
+            // 8XY6 - VX »= 1
+            (8, _, _, 6) => {
+                let x = digit2 as usize;
+                let lsb = self.v_reg[x] & 1;
+
+                self.v_reg[x] >>= 1;
+                self.v_reg[0xF] = lsb;
+            }
+
+            // 8XY7 - VX = VY - VX
+            (8, _, _, 7) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+
+                let (new_vx, borrow) = self.v_reg[y].overflowing_sub(self.v_reg[x]);
+
+                let vf = if borrow { 0 } else { 1 };
+
+                self.v_reg[x] = new_vx;
+                self.v_reg[0xF] = vf;
+            }
+
+            // 8XYE - VX «= 1
+            (8, _, _, 0xE) => {
+                let x = digit2 as usize;
+                let msb = (self.v_reg[x] >> 7) & 1;
+
+                self.v_reg[x] <<= 1;
+                self.v_reg[0xF] = msb;
+            }
+
+            // 9XY0 - Skip if VX != VY
+            (9, _, _, 0) => {
+                let x = digit2 as usize;
+                let y = digit3 as usize;
+
+                if self.v_reg[x] != self.v_reg[y] {
+                    self.pc += 2;
+                }
+            }
+
+            // ANNN - I = NNN
+            (0xA, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.i_reg = nnn;
+            }
+
+            // BNNN - Jump to V0 + NNN
+            (0xB, _, _, _) => {
+                let nnn = op & 0xFFF;
+                self.pc = (self.v_reg[0] as u16) + nnn;
+            }
+
+            // CXNN - VX = rand() & NN
+            (0xC, _, __, _) => {
+                let nn = (op & 0xFF) as u8;
+                let x = digit2 as usize;
+
+                let rng: u8 = random();
+                self.v_reg[x] = rng & nn;
+            }
+
+            // DXYN - Draw Sprite
+            // (0xD, _, _, _) => {
+            //     let x = digit2 as usize;
+            //     let y = digit3 as usize;
+
+            //     let n = op & 0xF;
+            // }
+            // EX9E - Skip if Key Pressed
+            // EXA1 - Skip if Key Not Pressed
+            // FX07 - VX = DT
+            // FX0A - Wait for Key Press
+            // FX15 - DT = VX
+            // FX18 - ST = VX
+            // FX1E - I += VX
+            // FX29 - Set I to Font Address
+            // FX33 - I = BCD of VX
+            // FX55 - Store V0 - VX into I
+            // FX65 - Load I into V0 - VX
             (_, _, _, _) => unimplemented!("Unimplemented opcode {}", op),
         }
     }
