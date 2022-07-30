@@ -453,7 +453,28 @@ impl Emu {
                 self.ram[(self.i_reg + 2) as usize] = ones;
             }
             // FX55 - Store V0 - VX into I
+            (0xF, _, 5, 5) => {
+                let x = digit2 as usize;
+                let i = self.i_reg as usize;
+
+                // inclusive range -> will take last element as well
+                for idx in 0..=x {
+                    self.ram[i + idx] = self.v_reg[idx];
+                }
+            }
+
             // FX65 - Load I into V0 - VX
+            (0xF, _, 6, 5) => {
+                let x = digit2 as usize;
+
+                let i = self.i_reg as usize;
+
+                for idx in 0..=x {
+                    self.v_reg[idx] = self.ram[i + idx];
+                }
+            }
+
+            // umimplimented
             (_, _, _, _) => unimplemented!("Unimplemented opcode {}", op),
         }
     }
