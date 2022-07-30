@@ -138,7 +138,7 @@ impl Emu {
 
         let digit1 = (op & 0xF000) >> 12;
         let digit2 = (op & 0x0F00) >> 8;
-        let digit3 = (op & 0x00F0) >> 12;
+        let digit3 = (op & 0x00F0) >> 4;
         let digit4 = op & 0x000F;
 
         match (digit1, digit2, digit3, digit4) {
@@ -327,21 +327,131 @@ impl Emu {
             }
 
             // DXYN - Draw Sprite
-            // (0xD, _, _, _) => {
-            //     let x = digit2 as usize;
-            //     let y = digit3 as usize;
+            (0xD, _, _, _) => {
+                // Get the (x, y) coords for our sprite
+                let x_coord = self.v_reg[digit2 as usize] as u16;
+                let y_coord = self.v_reg[digit3 as usize] as u16;
 
-            //     let n = op & 0xF;
-            // }
+                // The last digit determines how many rows high our sprite is
+                let num_rows = digit4;
+
+                // Keep track if any pixels were flipped
+                let mut flipped = false;
+
+                // Iterate over each row of our sprite
+                for y_line in 0..num_rows {
+                    // Determine which memory address our row's data is stored
+                    let addr = self.i_reg + y_line as u16;
+                    let pixels = self.ram[addr as usize];
+
+                    // Iterate over each column in our row
+                    for x_line in 0..8 {
+                        // Use a mask to fetch current pixel's bit. Only flip if a 1
+                        if (pixels & (0b10000000 >> x_line)) != 0 {
+                            // Sprites should wrap around screen, so apply modulo
+                            let x = (x_coord + x_line) as usize % SCREEN_WIDTH;
+                            let y = (y_coord + y_line) as usize % SCREEN_HEIGHT;
+
+                            // Get our pixel's index for our 1D screen array
+                            let idx = x + SCREEN_WIDTH * y;
+
+                            // Check if we're about to flip the pixel and set
+                            flipped |= self.screen[idx];
+                            self.screen[idx] ^= true;
+                        }
+                    }
+                }
+                if flipped {
+                    self.v_reg[0xF] = 1;
+                } else {
+                    self.v_reg[0xF] = 0;
+                }
+            }
+
             // EX9E - Skip if Key Pressed
+            (0xE, _, 9, 0xE) => {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x];
+                let key = self.keys[vx as usize];
+                if key {
+                    self.pc += 2;
+                }
+            }
+
             // EXA1 - Skip if Key Not Pressed
+            (0xE, _, 0xA, 1) => {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x];
+                let key = self.keys[vx as usize];
+                if !key {
+                    self.pc += 2;
+                }
+            }
+
             // FX07 - VX = DT
+            (0xF, _, 0, 7) => {
+                let x = digit2 as usize;
+
+                self.v_reg[x] = self.dt;
+            }
+
             // FX0A - Wait for Key Press
+            (0xF, _, 0, 0xA) => {
+                let x = digit2 as usize;
+                let mut pressed = false;
+
+                for i in 0..self.keys.len() {
+                    if self.keys[i] {
+                        self.v_reg[x] = i as u8;
+                        pressed = true;
+                        break;
+                    }
+                }
+                if !pressed {
+                    self.pc -= 2;
+                }
+            }
+
             // FX15 - DT = VX
+            (0xF, _, 1, 5) => {
+                let x = digit2 as usize;
+                self.dt = self.v_reg[x];
+            }
+
             // FX18 - ST = VX
+            (0xF, _, 1, 8) => {
+                let x = digit2 as usize;
+                self.st = self.v_reg[x];
+            }
+
             // FX1E - I += VX
+            (0xF, _, 1, 0xE) => {
+                let x = digit2 as usize;
+                let vx = self.v_reg[x] as u16;
+                self.i_reg = self.i_reg.wrapping_add(vx);
+            }
+
             // FX29 - Set I to Font Address
+            (0xF, _, 2, 9) => {
+                let x = digit2 as usize;
+                let c = self.v_reg[x] as u16;
+                self.i_reg = c * 5;
+            }
+
             // FX33 - I = BCD of VX
+            (0xF, _, 3, 3) => {
+                let x = digit2 as usize;
+
+                let vx = self.v_reg[x] as f32;
+
+                let hundreds = (vx / 100.0).floor() as u8;
+                let tens = ((vx / 10.0) % 10.0).floor() as u8;
+                let ones = (vx % 10.0).floor() as u8;
+
+                self.ram[self.i_reg as usize] = hundreds;
+                self.ram[(self.i_reg + 1) as usize] = tens;
+                self.ram[(self.i_reg + 2) as usize] = ones;
+            }
             // FX55 - Store V0 - VX into I
             // FX65 - Load I into V0 - VX
             (_, _, _, _) => unimplemented!("Unimplemented opcode {}", op),
